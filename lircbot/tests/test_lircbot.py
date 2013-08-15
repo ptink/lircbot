@@ -1,10 +1,11 @@
 import unittest
 import socket
+import time
 
 from lircbot.lircbot import ircBot
 
-MOCK_SERVER = "0.0.0.0"
-MOCK_PORT = 50227
+FAKE_SERVER = "0.0.0.0"
+FAKE_PORT = 50227
 
 
 class TestFrameworkFunctions(unittest.TestCase):
@@ -14,7 +15,7 @@ class TestFrameworkFunctions(unittest.TestCase):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # Prevent socket.error "[Errno 98]"
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((MOCK_SERVER, MOCK_PORT))
+        self.sock.bind((FAKE_SERVER, FAKE_PORT))
         # Listen for connections with a timeout of 100 seconds
         self.sock.listen(0)
         self.sock.settimeout(100.0)
@@ -27,26 +28,23 @@ class TestFrameworkFunctions(unittest.TestCase):
         if self.bot.is_alive():
             self.bot.stop()
             self.bot.join(5)
-            self.assertFalse(self.bot.is_alive, "Could not stop bot")
+            self.assertFalse(self.bot.is_alive(), "Could not stop bot")
         self.sock.close()
 
     def test_connect(self):
         self.set_up_socket()
         # Instantiate new ircBot and try to connect to the socket
-        self.bot = ircBot(MOCK_SERVER, MOCK_PORT, "CreateTest", "Testing the creation of a bot.")
+        self.bot = ircBot(FAKE_SERVER, FAKE_PORT, "ConnectTest", "Testing the bot connect function")
         self.bot.connect()
-        try:
-            self.bot.sock.recv(1024)
-        except socket.error:
-            self.fail("Not connected")
-
+        time.sleep(3)  # Give bot time to send messages
         self.assertTrue(self.bot.connected, "Failed to connect")
 
     def test_disconnect(self):
         self.set_up_socket()
         # Instantiate new ircBot and try to connect to the socket
-        self.bot = ircBot(MOCK_SERVER, MOCK_PORT, "CreateTest", "Testing the creation of a bot.")
+        self.bot = ircBot(FAKE_SERVER, FAKE_PORT, "DisconnectTest", "Testing the bot disconnect function")
         self.bot.connect()
-        self.assertTrue(self.bot.connected, "Failed to connect")
-        self.bot.disconnect()
+        time.sleep(3)  # Give bot time to send messages
+        # Try to disconnect from the socket
+        self.bot.disconnect("disconnecting...")
         self.assertFalse(self.bot.connected, "Failed to disconnect")

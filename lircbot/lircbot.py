@@ -193,7 +193,11 @@ class ircBot(threading.Thread):
     def connect(self):
         self.__debugPrint("Connecting...")
         self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.irc.connect((self.network, self.port))
+        try:
+            self.irc.connect((self.network, self.port))
+            self.connected = True
+        except socket.error:
+            self.connected = False
         self.inBuf = ircInputBuffer(self.irc)
         self.outBuf = ircOutputBuffer(self.irc)
         self.outBuf.sendBuffered("NICK " + self.name)
@@ -206,6 +210,7 @@ class ircBot(threading.Thread):
         self.__debugPrint("Disconnecting...")
         self.outBuf.sendBuffered("QUIT :" + qMessage)
         self.irc.close()
+        self.connected = False
 
     def identify(self, nick, approvedFunc, approvedParams, deniedFunc, deniedParams):
         self.__debugPrint("Verifying " + nick + "...")
