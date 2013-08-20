@@ -55,47 +55,57 @@ class ircInputBuffer:
         self.buffer = ""
         self.irc = irc
         self.lines = []
+        self.error = False
 
     def __recv(self):
         # Receives new data from the socket and splits it into lines.
         # Last (incomplete) line is kept for buffer purposes.
         try:
-            data = self.buffer + self.irc.recv(4096)
+            received = self.irc.recv(4096)
+            if not received:
+                # No connection
+                raise socket.error('No data received')
+            data = self.buffer + received
+            self.lines += data.split(b"\r\n")
+            self.buffer = self.lines[len(self.lines) - 1]
+            self.lines = self.lines[:len(self.lines) - 1]
         except socket.error, msg:
-            raise socket.error, msg
-        self.lines += data.split(b"\r\n")
-        self.buffer = self.lines[len(self.lines) - 1]
-        self.lines = self.lines[:len(self.lines) - 1]
+            print "Input error", msg
+            self.error = True
 
     def getLine(self):
         # Returns the next line of IRC received by the socket.
         # Converts the received string to standard string format before returning.
-        while len(self.lines) == 0:
-            try:
-                self.__recv()
-            except socket.error, msg:
-                raise socket.error, msg
+        if not self.isInError() and len(self.lines) > 0:
+            line = self.lines[0]
+            self.lines = self.lines[1:]
+            return str(line)
+        elif not self.isInError():
+            self.__recv()
             time.sleep(1)
-        line = self.lines[0]
-        self.lines = self.lines[1:]
-        return str(line)
+        return ""
+
+    def isInError(self):
+        return self.error
 
 
 class ircBot(threading.Thread):
     def __init__(self, network, port, name, description):
         threading.Thread.__init__(self)
+        self._debug = False
+        self._retries = 5
         self._stop = threading.Event()
+        self._to_threshold = 3 * 60  # Default 3 minute timeout
+        self.binds = []
         self.connected = False
-        self.name = name
         self.desc = description
+        self.identifyLock = False
+        self.identifyNickCommands = []
+        self.name = name
         self.network = network
         self.port = port
-        self.identifyNickCommands = []
-        self.identifyLock = False
-        self.binds = []
-        self.debug = False
 
-        # PRIVATE FUNCTIONS
+    # PRIVATE FUNCTIONS
     def __identAccept(self, nick):
         """ Executes all the callbacks that have been approved for this nick
         """
@@ -173,10 +183,36 @@ class ircBot(threading.Thread):
                 self.__callBind(headers[1], sender, headers[2:], message)
 
     def __debugPrint(self, s):
-        if self.debug:
+        if self._debug:
             print s
 
-        # PUBLIC FUNCTIONS
+    # INTERNAL FUNCTIONS
+    def _connect(self):
+        self.__debugPrint("Connecting...")
+        # Setup the socket & input/output buffers
+        self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.inBuf = ircInputBuffer(self.irc)
+        self.outBuf = ircOutputBuffer(self.irc)
+        # Try to connect to the socket
+        try:
+            self.irc.connect((self.network, self.port))
+            self.irc.settimeout(self._to_threshold)
+            self.connected = True
+        except socket.error as e:
+            self.connected = False
+            raise e
+
+    def _disconnect(self, qMessage):
+        self.__debugPrint("Disconnecting...")
+        try:
+            self.outBuf.sendBuffered("QUIT :" + qMessage)
+            self.irc.close()
+            self.connected = False
+        except socket.error as e:
+            self.connected = False
+            raise e
+
+    # PUBLIC FUNCTIONS
     def ban(self, banMask, nick, channel, reason):
         self.__debugPrint("Banning " + banMask + "...")
         self.outBuf.sendBuffered("MODE +b " + channel + " " + banMask)
@@ -190,27 +226,8 @@ class ircBot(threading.Thread):
                 self.binds.remove(i)
         self.binds.append((msgtype, callback))
 
-    def connect(self):
-        self.__debugPrint("Connecting...")
-        self.irc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            self.irc.connect((self.network, self.port))
-            self.connected = True
-        except socket.error:
-            self.connected = False
-        self.inBuf = ircInputBuffer(self.irc)
-        self.outBuf = ircOutputBuffer(self.irc)
-        self.outBuf.sendBuffered("NICK " + self.name)
-        self.outBuf.sendBuffered("USER " + self.name + " " + self.name + " " + self.name + " :" + self.desc)
-
     def debugging(self, state):
-        self.debug = state
-
-    def disconnect(self, qMessage):
-        self.__debugPrint("Disconnecting...")
-        self.outBuf.sendBuffered("QUIT :" + qMessage)
-        self.irc.close()
-        self.connected = False
+        self._debug = state
 
     def identify(self, nick, approvedFunc, approvedParams, deniedFunc, deniedParams):
         self.__debugPrint("Verifying " + nick + "...")
@@ -219,7 +236,7 @@ class ircBot(threading.Thread):
             self.outBuf.sendBuffered("WHOIS " + nick)
             self.identifyLock = True
 
-    def joinchan(self, channel):
+    def join_chan(self, channel):
         self.__debugPrint("Joining " + channel + "...")
         self.outBuf.sendBuffered("JOIN " + channel)
 
@@ -227,29 +244,53 @@ class ircBot(threading.Thread):
         self.__debugPrint("Kicking " + nick + "...")
         self.outBuf.sendBuffered("KICK " + channel + " " + nick + " :" + reason)
 
+    def read_line(self):
+        # If the bot is stopped/in error state we want to exit the read loop
+        while not self.stop_reading():
+            line = self.inBuf.getLine()
+            if len(line) > 0:
+                if line.startswith("PING"):
+                    self.outBuf.sendImmediately("PONG " + line.split()[1])
+                else:
+                    self.__processLine(line)
+        if self.outBuf.isInError() or self.inBuf.isInError():
+            self.retry_connection()
+
     def reconnect(self):
-        self.disconnect("Reconnecting")
-        self.__debugPrint("Pausing before reconnecting...")
-        time.sleep(5)
-        self.connect()
+        if self.connected:
+            self.__debugPrint("Pausing before reconnecting...")
+            self._disconnect("Reconnecting")
+            time.sleep(5)
+        self._connect()
+        self.send_auth_details()
+
+    def retries(self, n):
+        self._retries = int(n)
+
+    def retry_connection(self):
+        # Attempt to connect n times
+        for i in range(self._retries):
+            try:
+                self.reconnect()
+                break
+            except socket.error, msg:
+                print "Socket error", msg
+                if i == (self._retries - 1):
+                    # Stop the bot
+                    print "Reached maximum number of retries."
+                    self.stop()
+                else:
+                    # Wait before attempting to reconnect
+                    time.sleep(2)
 
     def run(self):
         self.__debugPrint("Bot is now running.")
-        self.connect()
         while not self.stopped():
-            line = ""
-            while len(line) == 0 and not self.stopped():
-                try:
-                    line = self.inBuf.getLine()
-                except socket.error, msg:
-                    print "Input error", msg
-                    self.reconnect()
-            if line.startswith("PING"):
-                self.outBuf.sendImmediately("PONG " + line.split()[1])
+            if not self.connected:
+                self.retry_connection()
             else:
-                self.__processLine(line)
-            if self.outBuf.isInError():
-                self.reconnect()
+                self.read_line()
+        self.__debugPrint("Bot stopping.")
 
     def say(self, recipient, message):
         self.outBuf.sendBuffered("PRIVMSG " + recipient + " :" + message)
@@ -257,11 +298,30 @@ class ircBot(threading.Thread):
     def send(self, string):
         self.outBuf.sendBuffered(string)
 
+    def send_auth_details(self):
+        if self.connected:
+            self.outBuf.sendBuffered("NICK " + self.name)
+            self.outBuf.sendBuffered("USER " + self.name + " " + self.name + " " + self.name + " :" + self.desc)
+
     def stop(self):
         self._stop.set()
+        if self.connected:
+            self.irc.shutdown(socket.SHUT_WR)
 
     def stopped(self):
         return self._stop.isSet()
+
+    def stop_reading(self):
+        return any([self.stopped(),
+                    self.inBuf.isInError(),
+                    self.outBuf.isInError()])
+
+    def timeout_threshold(self, t):
+        t = float(t)
+        if t > 0:
+            self._to_threshold = t
+        else:
+            raise Exception("Timeout threshold must be non-negative.")
 
     def unban(self, banMask, channel):
         self.__debugPrint("Unbanning " + banMask + "...")

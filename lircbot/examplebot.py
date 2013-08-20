@@ -87,6 +87,7 @@ if __name__ == "__main__":
         bot.bind("PRIVMSG", privmsg)
         bot.bind("ACTION", actionmsg)
         bot.bind("376", endMOTD)
+        bot.timeout_threshold(5 * 60)
         bot.debugging(True)
         bot.start()
         inputStr = ""
