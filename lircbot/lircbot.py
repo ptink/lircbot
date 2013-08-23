@@ -198,9 +198,9 @@ class ircBot(threading.Thread):
             self.irc.connect((self.network, self.port))
             self.irc.settimeout(self._to_threshold)
             self.connected = True
-        except socket.error as e:
+        except socket.error:
             self.connected = False
-            raise e
+            raise
 
     def _disconnect(self, qMessage):
         self.__debugPrint("Disconnecting...")

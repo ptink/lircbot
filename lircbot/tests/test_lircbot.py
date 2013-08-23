@@ -1,50 +1,46 @@
 import unittest
 import socket
-import time
+from mock import patch, Mock
 
 from lircbot.lircbot import ircBot
 
 FAKE_SERVER = "0.0.0.0"
 FAKE_PORT = 50227
+TIMEOUT_THRESHOLD = 3 * 60
 
-
-class TestFrameworkFunctions(unittest.TestCase):
-
-    def set_up_socket(self):
-        # Create stream socket and bind it to the mock server/port
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # Prevent socket.error "[Errno 98]"
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind((FAKE_SERVER, FAKE_PORT))
-        # Listen for connections with a timeout of 100 seconds
-        self.sock.listen(0)
-        self.sock.settimeout(100.0)
+@patch('lircbot.lircbot.socket.socket')
+class TestBotConnect(unittest.TestCase):
 
     def setUp(self):
-        self.sock = socket.socket()
-        self.bot = None
+        # Instantiate new ircBot and try to connect to the socket
+        self.bot = ircBot(FAKE_SERVER, FAKE_PORT, "ConnectTest", "Testing the bot connect function")
 
     def tearDown(self):
         if self.bot.is_alive():
             self.bot.stop()
-            self.bot.join(5)
+            self.bot.join(10)
             self.assertFalse(self.bot.is_alive(), "Could not stop bot")
-        self.sock.close()
 
-    def test_connect(self):
-        self.set_up_socket()
-        # Instantiate new ircBot and try to connect to the socket
-        self.bot = ircBot(FAKE_SERVER, FAKE_PORT, "ConnectTest", "Testing the bot connect function")
-        self.bot.connect()
-        time.sleep(3)  # Give bot time to send messages
-        self.assertTrue(self.bot.connected, "Failed to connect")
+    def test_socket_connect_called(self, mock_socket):
+        # Run _connect, test socket connect called correctly
+        self.bot._connect()
+        self.bot.irc.connect.assert_called_once_with((FAKE_SERVER, FAKE_PORT))
 
-    def test_disconnect(self):
-        self.set_up_socket()
-        # Instantiate new ircBot and try to connect to the socket
-        self.bot = ircBot(FAKE_SERVER, FAKE_PORT, "DisconnectTest", "Testing the bot disconnect function")
-        self.bot.connect()
-        time.sleep(3)  # Give bot time to send messages
-        # Try to disconnect from the socket
-        self.bot.disconnect("disconnecting...")
-        self.assertFalse(self.bot.connected, "Failed to disconnect")
+    def test_socket_timeout_set(self, mock_socket):
+        # Set bot timeout
+        self.bot.timeout_threshold(TIMEOUT_THRESHOLD)
+        # Run _connect, test socket timeout called correctly
+        self.bot._connect()
+        self.bot.irc.settimeout.assert_called_once_with(TIMEOUT_THRESHOLD)
+
+    def test_bot_connected_set(self, mock_socket):
+        # Run _connect, test that bot's connected variable set correctly
+        self.bot._connect()
+        self.assertTrue(self.bot.connected)
+
+    def test_socket_error_raised(self, mock_socket):
+        # Set mock socket connect method to raise a socket error
+        mock_socket.side_effect = socket.error((111, '[Errno 111] Connection refused'))
+        # Check socket error raised
+        self.assertRaises(socket.error, self.bot._connect)
+        self.assertFalse(self.bot.connected)
