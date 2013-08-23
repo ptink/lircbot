@@ -1,6 +1,6 @@
 import unittest
 import socket
-from mock import patch, Mock
+from mock import patch, Mock, MagicMock
 
 from lircbot.lircbot import ircBot
 
@@ -40,7 +40,8 @@ class TestBotConnect(unittest.TestCase):
 
     def test_socket_error_raised(self, mock_socket):
         # Set mock socket connect method to raise a socket error
-        mock_socket.side_effect = socket.error((111, '[Errno 111] Connection refused'))
+        mock_socket.connect = MagicMock()
+        mock_socket.connect.side_effect = socket.error((111, '[Errno 111] Connection refused'))
         # Check socket error raised
         self.assertRaises(socket.error, self.bot._connect)
         self.assertFalse(self.bot.connected)
