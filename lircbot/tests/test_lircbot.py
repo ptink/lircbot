@@ -97,3 +97,37 @@ class TestBotDisconnect(BotSetupMixin, unittest.TestCase):
         # Check socket error raised
         self.assertRaises(socket.error, self.bot._disconnect(self.DC_MESSAGE))
         self.assertFalse(self.bot.connected)
+
+
+class TestBotReconnect(BotSetupMixin, unittest.TestCase):
+
+    def setUp(self):
+        super(TestBotReconnect, self).setUp()
+        self.bot._connect = MagicMock()
+        self.bot._disconnect = MagicMock()
+        self.bot.send_auth_details = MagicMock()
+
+    def tearDown(self):
+        super(TestBotReconnect, self).tearDown()
+
+    def test_connect_called(self):
+        # Run reconnect, test bot _connect called
+        self.bot.reconnect()
+        self.bot._connect.assert_called_once_with()
+
+    def test_disconnect_called(self):
+        # Run reconnect, test bot _disconnect called when connected is True
+        self.bot.connected = True
+        self.bot.reconnect()
+        self.bot._disconnect.assert_called_once_with('Reconnecting')
+
+    def test_disconnect_not_called(self):
+        # Run reconnect, test bot _disconnect not called when connected is False
+        self.bot.connected = False
+        self.bot.reconnect()
+        assert not self.bot._disconnect.called, 'Method was called, expected no call'
+
+    def test_send_auth_details_called(self):
+        # Run reconnect, test bot _connect called
+        self.bot.reconnect()
+        self.bot.send_auth_details.assert_called_once_with()

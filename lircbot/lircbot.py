@@ -211,7 +211,7 @@ class ircBot(threading.Thread):
             self.connected = False
         except socket.error as e:
             self.connected = False
-            raise e
+            raise
 
     # PUBLIC FUNCTIONS
     def ban(self, banMask, nick, channel, reason):
@@ -261,7 +261,7 @@ class ircBot(threading.Thread):
         if self.connected:
             self.__debugPrint("Pausing before reconnecting...")
             self._disconnect("Reconnecting")
-            time.sleep(5)
+            time.sleep(1)
         self._connect()
         self.send_auth_details()
 
