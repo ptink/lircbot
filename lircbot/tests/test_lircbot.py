@@ -34,27 +34,26 @@ class TestBotConnect(BotSetupMixin, unittest.TestCase):
         super(TestBotConnect, self).tearDown()
 
     def test_socket_connect_called(self, mock_socket):
-        # Run _connect, test socket connect called correctly
+        # Test socket.connect() called correctly
         self.bot._connect()
         self.bot.irc.connect.assert_called_once_with((self.FAKE_SERVER, self.FAKE_PORT))
 
     def test_socket_timeout_set(self, mock_socket):
         # Set bot timeout
         self.bot.timeout_threshold(self.TIMEOUT_THRESHOLD)
-        # Run _connect, test socket timeout called correctly
+        # Test socket.settimeout() called correctly
         self.bot._connect()
         self.bot.irc.settimeout.assert_called_once_with(self.TIMEOUT_THRESHOLD)
 
     def test_bot_connected_set(self, mock_socket):
-        # Run _connect, test that bot's connected variable set correctly
+        # Test that the bot.connected variable was set to True
         self.bot._connect()
         self.assertTrue(self.bot.connected)
 
     def test_socket_error_raised(self, mock_socket):
-        # Set mock socket connect method to raise a socket error
-
+        # Tell the mock socket.connect() method to raise a socket error
         mock_socket().connect = MagicMock(side_effect=socket.error)
-        # Check socket error raised
+        # Check socket error was raised and bot.connected variable was set to False
         self.assertRaises(socket.error, self.bot._connect)
         self.assertFalse(self.bot.connected)
 
@@ -65,7 +64,7 @@ class TestBotDisconnect(BotSetupMixin, unittest.TestCase):
 
     def setUp(self):
         super(TestBotDisconnect, self).setUp()
-        # Set up mock objects for the bot's socket and input/output buffers
+        # Set up MagicMock objects for the bot's socket and input/output buffers
         with patch('lircbot.lircbot.socket.socket') as socketMock:
             self.bot.irc = socketMock
         with patch('lircbot.lircbot.ircInputBuffer') as ircInputBufferMock:
@@ -77,24 +76,24 @@ class TestBotDisconnect(BotSetupMixin, unittest.TestCase):
         super(TestBotDisconnect, self).tearDown()
 
     def test_socket_close_called(self):
-        # Run _disconnect, test socket close called correctly
+        # Test socket.close() called correctly
         self.bot._disconnect(self.DC_MESSAGE)
         self.bot.irc.close.assert_called_once_with()
 
     def test_bot_connected_set(self):
-        # Run _disconnect, test that bot's connected variable set correctly
+        # Test that the bot.connected variable was set to False
         self.bot._disconnect(self.DC_MESSAGE)
         self.assertFalse(self.bot.connected)
 
     def test_quit_message_set(self):
-        # Run _disconnect, test output buffer sendBuffered called correctly
+        # Test outBuf.sendBuffered() called correctly
         self.bot._disconnect(self.DC_MESSAGE)
         self.bot.outBuf.sendBuffered.assert_called_once_with("QUIT :" + self.DC_MESSAGE)
 
     def test_socket_error_raised(self):
-        # Set mock output_buffer connect method to raise a socket error
+        # Tell the mock outBuf.sendBuffered() method to raise a socket error
         self.bot.outBuf().sendBuffered = MagicMock(side_effect=socket.error)
-        # Check socket error raised
+        # Check socket error was raised and bot.connected variable was set to False
         self.assertRaises(socket.error, self.bot._disconnect(self.DC_MESSAGE))
         self.assertFalse(self.bot.connected)
 
@@ -111,23 +110,23 @@ class TestBotReconnect(BotSetupMixin, unittest.TestCase):
         super(TestBotReconnect, self).tearDown()
 
     def test_connect_called(self):
-        # Run reconnect, test bot _connect called
+        # Test bot._connect was called
         self.bot.reconnect()
         self.bot._connect.assert_called_once_with()
 
+    def test_send_auth_details_called(self):
+        # Test bot.send_auth_details() was called
+        self.bot.reconnect()
+        self.bot.send_auth_details.assert_called_once_with()
+
     def test_disconnect_called(self):
-        # Run reconnect, test bot _disconnect called when connected is True
         self.bot.connected = True
+        # Test bot._disconnect was called
         self.bot.reconnect()
         self.bot._disconnect.assert_called_once_with('Reconnecting')
 
     def test_disconnect_not_called(self):
-        # Run reconnect, test bot _disconnect not called when connected is False
         self.bot.connected = False
+        # Test bot._disconnect was not called
         self.bot.reconnect()
         assert not self.bot._disconnect.called, 'Method was called, expected no call'
-
-    def test_send_auth_details_called(self):
-        # Run reconnect, test bot _connect called
-        self.bot.reconnect()
-        self.bot.send_auth_details.assert_called_once_with()

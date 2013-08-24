@@ -209,7 +209,7 @@ class ircBot(threading.Thread):
             self.outBuf.sendBuffered("QUIT :" + qMessage)
             self.irc.close()
             self.connected = False
-        except socket.error as e:
+        except socket.error:
             self.connected = False
             raise
 
