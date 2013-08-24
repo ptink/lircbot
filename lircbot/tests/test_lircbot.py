@@ -19,7 +19,6 @@ class TestBotConnect(unittest.TestCase):
         if self.bot.is_alive():
             self.bot.stop()
             self.bot.join(10)
-            self.assertFalse(self.bot.is_alive(), "Could not stop bot")
 
     def test_socket_connect_called(self, mock_socket):
         # Run _connect, test socket connect called correctly
@@ -40,8 +39,7 @@ class TestBotConnect(unittest.TestCase):
 
     def test_socket_error_raised(self, mock_socket):
         # Set mock socket connect method to raise a socket error
-        mock_socket.connect = MagicMock()
-        mock_socket.connect.side_effect = socket.error((111, '[Errno 111] Connection refused'))
+        mock_socket().connect = MagicMock(side_effect=socket.error((111, '[Errno 111] Connection refused')))
         # Check socket error raised
         self.assertRaises(socket.error, self.bot._connect)
         self.assertFalse(self.bot.connected)
