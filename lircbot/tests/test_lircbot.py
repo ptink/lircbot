@@ -21,6 +21,7 @@ class BotSetupMixin(object):
             self.bot.stop()
             self.bot.join(10)
 
+
 @patch('lircbot.lircbot.socket.socket')
 class TestBotConnect(BotSetupMixin, unittest.TestCase):
 
