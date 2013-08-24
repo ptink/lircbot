@@ -43,6 +43,7 @@ class ircOutputBuffer:
                 self.error = True
                 print "Output error", msg
                 print "Was sending \"" + string + "\""
+                raise
 
     def isInError(self):
         return self.error
