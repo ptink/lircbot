@@ -1,7 +1,7 @@
-lircbot -- Lightwieght IRC bot framework
+lircbot -- Lightweight IRC bot framework
 ============================================================
 
 Description
 -----------
 
-lircbot is a lightwieght IRC bot based on Python-IRC-Bot-Framework - https://github.com/LukeusMaximus/Python-IRC-Bot-Framework
+lircbot is a lightweight IRC bot based on Python-IRC-Bot-Framework - https://github.com/LukeusMaximus/Python-IRC-Bot-Framework
